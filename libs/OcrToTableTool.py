@@ -108,12 +108,12 @@ class OcrToTableTool:
             current_row = []
 
     def get_result_from_tersseract(self, image_path):
-        output = subprocess.getoutput('tesseract ' + image_path + ' - -l eng --oem 3 --psm 7 --dpi 72 -c tessedit_char_whitelist="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789().calmg* "')
+        output = subprocess.getoutput('tesseract ' + image_path + ' - -l eng --oem 1 --psm 11 tsv')
         output = output.strip()
         return output
 
     def generate_csv_file(self):
-        with open("output.csv", "w") as f:
+        with open("output.tsv", "w") as f:
             for row in self.table:
                 f.write(",".join(row) + "\n")
 
