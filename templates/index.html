@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Table Extractor Service</title>
+    <style>
+        body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background: #f4f4f9; }
+        .card { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center; }
+        input { margin: 1rem 0; }
+        button { background: #007bff; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2>Table to PDF Converter</h2>
+        <p>Upload your table images (JPG/PNG)</p>
+        <form action="/upload" method="post" enctype="multipart/form-data">
+            <input type="file" name="files" multiple accept="image/*"><br>
+            <button type="submit">Process and Download PDF</button>
+        </form>
+    </div>
+</body>
+</html>
