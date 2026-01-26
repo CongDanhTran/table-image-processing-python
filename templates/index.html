@@ -160,7 +160,7 @@
         
         rows.forEach((row) => {
             // Skip header rows on subsequent pages to avoid duplicates
-            if (!isFirstPage && row.querySelector('th')) return;
+            //if (!isFirstPage && row.querySelector('th')) return;
 
             const cells = row.querySelectorAll('th, td');
             const rowData = Array.from(cells).map(cell => {
