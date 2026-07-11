@@ -255,6 +255,104 @@
     </div>
   </div>
 
+  <div class="panel">
+    <a href="https://www.gstatic.com/cloud-site-ux/document_ai/document_ai.min.html" target="_blank"
+      rel="noopener noreferrer">GOOGLE OCR </a>
+  
+    <div style="position: relative;">
+      <pre id="codeBlock" style="padding: 15px; border-radius: 5px; border: 1px solid #ddd; overflow-x: auto;">(async () =&gt; {
+      let allData = [];
+      let isFirstPage = true;
+  
+      // Configuration: 2000ms (2 seconds) wait for page load
+      const LOAD_DELAY = 2000; 
+  
+      const scrapeCurrentPage = () =&gt; {
+          const table = document.querySelector('table');
+          if (!table) return;
+  
+          const rows = Array.from(table.querySelectorAll('tr'));
+          
+          rows.forEach((row) =&gt; {
+              // Skip header rows on subsequent pages to avoid duplicates
+              //if (!isFirstPage &amp;&amp; row.querySelector('th')) return;
+  
+              const cells = row.querySelectorAll('th, td');
+              const rowData = Array.from(cells).map(cell =&gt; {
+                  // 1. Get text
+                  // 2. Replace everything that is NOT a letter (a-z) or number (0-9)
+                  // /[^a-zA-Z0-9]/g -&gt; ^ means "NOT", g means "global"
+                  let cleanText = cell.innerText.replace(/[^a-zA-Z0-9]/g, '');
+                  
+                  return `"${cleanText}"`;
+              });
+              allData.push(rowData.join(","));
+          });
+          isFirstPage = false;
+      };
+  
+      const getNextButton = () =&gt; {
+          // Targets the Next button specifically
+          return document.querySelector('button[cfctooltip*="Next page"]');
+      };
+  
+      const downloadCSV = (content) =&gt; {
+          const csvText = content.join("\r\n");
+          const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8;' });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.setAttribute("href", url);
+          link.setAttribute("download", "alphanumeric_table_data.csv");
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          console.log("Process complete. Your file has been downloaded.");
+      };
+  
+      // Main Scraping Loop
+      while (true) {
+          console.log("Extracting page data...");
+          scrapeCurrentPage();
+  
+          const nextBtn = getNextButton();
+  
+          // Stop if button is missing, disabled, or aria-disabled
+          if (!nextBtn || nextBtn.disabled || nextBtn.getAttribute('aria-disabled') === 'true' || nextBtn.classList.contains('cm-disabled')) {
+              console.log("Reached final page.");
+              break;
+          }
+  
+          console.log("Clicking Next...");
+          nextBtn.click();
+  
+          // Wait for table to refresh
+          await new Promise(resolve =&gt; setTimeout(resolve, LOAD_DELAY));
+      }
+  
+      downloadCSV(allData);
+  })();
+    </pre>
+  
+      <button onclick="copyCode()" style="position: absolute; top: 10px; right: 10px; cursor: pointer;">
+        Copy Code
+      </button>
+    </div>
+  
+    <script>
+      function copyCode() {
+        // Get the text from the code block
+        const codeText = document.getElementById('codeBlock').innerText;
+
+        // Copy to clipboard
+        navigator.clipboard.writeText(codeText).then(() => {
+          alert("Code copied to clipboard!");
+        }).catch(err => {
+          console.error('Failed to copy: ', err);
+        });
+      }
+    </script>
+  </div>
+
   <footer>Grayscale → Otsu threshold → invert → dilate → contour detection → largest rectangle → perspective warp → padding — any step can be disabled or reordered above</footer>
 </div>
 
