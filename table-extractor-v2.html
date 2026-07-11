@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scanline — Page Extractor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #171513;
+    --panel: #211e1b;
+    --panel-2: #2a2622;
+    --line: #3a352f;
+    --amber: #d98e3f;
+    --amber-dim: #8a5f2c;
+    --teal: #5fb8b0;
+    --ink: #eae3d8;
+    --ink-dim: #a89f92;
+    --error: #d9614f;
+    --ok: #7fb069;
+    --radius: 3px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:
+      radial-gradient(1200px 600px at 15% -10%, rgba(217,142,63,0.06), transparent 60%),
+      var(--bg);
+    color:var(--ink);
+    font-family:'Inter',sans-serif;
+    min-height:100vh;
+  }
+  .wrap{max-width:1120px; margin:0 auto; padding:40px 24px 80px;}
+
+  header{
+    display:flex; align-items:baseline; justify-content:space-between;
+    border-bottom:1px solid var(--line); padding-bottom:20px; margin-bottom:28px;
+    flex-wrap:wrap; gap:12px;
+  }
+  .brand{display:flex; align-items:baseline; gap:14px;}
+  .brand .mark{
+    font-family:'JetBrains Mono',monospace; color:var(--amber); font-size:13px;
+    letter-spacing:0.15em; border:1px solid var(--amber-dim); padding:3px 7px; border-radius:var(--radius);
+  }
+  h1{
+    font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:26px; margin:0;
+    letter-spacing:-0.01em;
+  }
+  .sub{font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--ink-dim);}
+  #engineStatus{font-family:'JetBrains Mono',monospace; font-size:12px; display:flex; align-items:center; gap:8px;}
+  .dot{width:7px; height:7px; border-radius:50%; background:var(--ink-dim); flex-shrink:0;}
+  .dot.loading{background:var(--amber); animation:pulse 1.1s ease-in-out infinite;}
+  .dot.ready{background:var(--ok);}
+  .dot.err{background:var(--error);}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.25;}}
+
+  .panel{
+    background:var(--panel); border:1px solid var(--line); border-radius:var(--radius);
+    padding:22px; margin-bottom:22px;
+  }
+  .panel > .panel-head{
+    display:flex; align-items:baseline; justify-content:space-between; gap:12px;
+    margin-bottom:16px; flex-wrap:wrap;
+  }
+  .panel-head h2{
+    font-family:'Space Grotesk',sans-serif; font-size:15px; margin:0; font-weight:600;
+  }
+  .panel-head .hint{font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--ink-dim);}
+
+  .drop{
+    border:1px dashed var(--line); border-radius:var(--radius);
+    padding:36px 20px; text-align:center; cursor:pointer;
+    transition:border-color .15s, background .15s;
+  }
+  .drop:hover, .drop.drag{border-color:var(--amber); background:rgba(217,142,63,0.04);}
+  .drop .big{font-family:'Space Grotesk',sans-serif; font-size:16px; margin-bottom:6px;}
+  .drop .small{font-family:'JetBrains Mono',monospace; font-size:11.5px; color:var(--ink-dim);}
+  input[type=file]{display:none;}
+
+  .controls{display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:14px; margin-bottom:6px;}
+  .controls .left{display:flex; gap:10px; flex-wrap:wrap;}
+  .controls .right{display:flex; gap:10px; flex-wrap:wrap;}
+
+  button{
+    font-family:'JetBrains Mono',monospace; font-size:12.5px; letter-spacing:0.02em;
+    background:var(--panel-2); color:var(--ink); border:1px solid var(--line);
+    padding:9px 14px; border-radius:var(--radius); cursor:pointer;
+    transition:border-color .15s, color .15s, background .15s;
+  }
+  button:hover:not(:disabled){border-color:var(--amber); color:var(--amber);}
+  button:disabled{opacity:0.35; cursor:not-allowed;}
+  button.primary{background:var(--amber); color:#1a1510; border-color:var(--amber); font-weight:600;}
+  button.primary:hover:not(:disabled){background:#e6a05a; color:#1a1510;}
+  button.ghost{background:transparent;}
+  button.small{padding:6px 10px; font-size:11px;}
+
+  .opts{
+    display:flex; gap:22px; flex-wrap:wrap; align-items:center;
+    font-family:'JetBrains Mono',monospace; font-size:11.5px; color:var(--ink-dim);
+    margin-top:16px; padding-top:16px; border-top:1px solid var(--line);
+  }
+  .opts label{display:flex; align-items:center; gap:7px; cursor:pointer;}
+
+  /* ---- pipeline editor ---- */
+  .steps{display:flex; flex-direction:column; gap:8px;}
+  .step-row{
+    display:grid;
+    grid-template-columns:52px 34px 1fr auto;
+    align-items:center; gap:12px;
+    background:var(--panel-2); border:1px solid var(--line); border-radius:var(--radius);
+    padding:10px 12px;
+    transition:opacity .15s;
+  }
+  .step-row.disabled{opacity:0.45;}
+  .step-order{display:flex; flex-direction:column; gap:2px;}
+  .step-order button{padding:2px 0; font-size:10px; line-height:1; width:100%;}
+  .step-toggle{display:flex; align-items:center; justify-content:center; gap:0; cursor:pointer;}
+  .step-toggle input{accent-color:var(--amber); width:16px; height:16px; cursor:pointer;}
+  .step-info .step-name{font-family:'Space Grotesk',sans-serif; font-size:13.5px; font-weight:600;}
+  .step-info .step-desc{font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--ink-dim); margin-top:2px;}
+  .step-params{display:flex; gap:14px; align-items:center; flex-wrap:wrap; justify-content:flex-end;}
+  .step-params .param{
+    display:flex; flex-direction:column; align-items:flex-end; gap:3px;
+    font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--ink-dim);
+  }
+  .step-params .param input{
+    width:60px; background:var(--panel); border:1px solid var(--line); color:var(--ink);
+    font-family:'JetBrains Mono',monospace; padding:5px 6px; border-radius:var(--radius); text-align:right;
+  }
+  .step-num-badge{
+    font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--ink-dim);
+    width:34px; text-align:center;
+  }
+
+  .grid{
+    display:grid; grid-template-columns:repeat(auto-fill, minmax(230px,1fr)); gap:16px;
+  }
+  .card{
+    background:var(--panel); border:1px solid var(--line); border-radius:var(--radius);
+    overflow:hidden; display:flex; flex-direction:column;
+  }
+  .card .imgbox{
+    position:relative; aspect-ratio:3/4; background:#0f0e0c;
+    display:flex; align-items:center; justify-content:center; overflow:hidden;
+  }
+  .card .imgbox img, .card .imgbox canvas{max-width:100%; max-height:100%; object-fit:contain; display:block;}
+  .scanline{
+    position:absolute; left:0; right:0; height:2px;
+    background:linear-gradient(90deg, transparent, var(--amber), transparent);
+    box-shadow:0 0 8px 1px var(--amber);
+    animation:sweep 1.4s linear infinite;
+  }
+  @keyframes sweep{0%{top:0%;}100%{top:100%;}}
+  .card .meta{
+    padding:10px 12px; font-family:'JetBrains Mono',monospace; font-size:11px;
+    display:flex; flex-direction:column; gap:6px; border-top:1px solid var(--line);
+  }
+  .card .name{color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .card .status{display:flex; align-items:center; gap:6px; color:var(--ink-dim);}
+  .card .status .sdot{width:6px;height:6px;border-radius:50%;background:var(--ink-dim);}
+  .card .status.pending .sdot{background:var(--ink-dim);}
+  .card .status.processing .sdot{background:var(--amber); animation:pulse 1.1s ease-in-out infinite;}
+  .card .status.done .sdot{background:var(--ok);}
+  .card .status.error .sdot{background:var(--error);}
+  .card .status.stale .sdot{background:var(--amber);}
+  .card .status.stale{color:var(--amber);}
+  .card .rowbtns{display:flex; gap:6px; margin-top:2px;}
+  .card .rowbtns button{flex:1;}
+  .card .errmsg{color:var(--error); font-size:10.5px; line-height:1.4;}
+
+  footer{margin-top:36px; font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--ink-dim); text-align:center;}
+  .hidden{display:none !important;}
+  .empty{font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--ink-dim); text-align:center; padding:20px 0;}
+
+  @media (max-width:640px){
+    .step-row{grid-template-columns:44px 30px 1fr; }
+    .step-params{grid-column:1 / -1; justify-content:flex-start;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand">
+      <span class="mark">CV·JS</span>
+      <div>
+        <h1>Scanline</h1>
+        <div class="sub">perspective correction for scanned pages — runs entirely in your browser</div>
+      </div>
+    </div>
+    <div id="engineStatus"><span class="dot loading"></span><span id="engineStatusText">loading OpenCV.js…</span></div>
+  </header>
+
+  <div class="panel">
+    <div class="drop" id="drop">
+      <div class="big">Drop images here, or click to choose files</div>
+      <div class="small">JPG / PNG · processed locally, nothing is uploaded</div>
+      <input type="file" id="fileInput" accept="image/jpeg,image/png,image/jpg" multiple>
+    </div>
+
+    <div class="opts">
+      <label><input type="checkbox" id="optAutoProcess" checked> auto-process on add</label>
+      <label><input type="checkbox" id="optJpeg"> export as JPEG (default PNG)</label>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <h2>Pipeline</h2>
+      <div class="hint" id="pipelineHint">toggle steps on/off, reorder with ↑↓, or edit their settings</div>
+    </div>
+    <div class="steps" id="pipelineList"></div>
+    <div class="opts">
+      <button class="small ghost" id="btnResetPipeline">Reset to default order</button>
+      <span class="hint">disabling "perspective warp" lets you preview an earlier step's output (e.g. just the dilated mask)</span>
+    </div>
+  </div>
+
+  <div class="panel" id="workPanel">
+    <div class="controls">
+      <div class="left">
+        <button class="primary" id="btnProcessAll" disabled>Process all</button>
+        <button class="ghost" id="btnClear" disabled>Clear all</button>
+      </div>
+      <div class="right">
+        <button id="btnZip" disabled>Download images (.zip)</button>
+        <button id="btnPdf" disabled>Download as PDF</button>
+      </div>
+    </div>
+    <div class="grid" id="grid">
+      <div class="empty" id="emptyMsg">No images added yet.</div>
+    </div>
+  </div>
+
+  <footer>Grayscale → Otsu threshold → invert → dilate → contour detection → largest rectangle → perspective warp → padding — any step can be disabled or reordered above</footer>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  // ---------- pipeline step definitions ----------
+  const STEP_DEFS = [
+    { id:'grayscale', label:'Grayscale',          desc:'Convert to single-channel grayscale',                              params:[] },
+    { id:'threshold', label:'Otsu threshold',     desc:'Binarize automatically using Otsu\u2019s method',                  params:[] },
+    { id:'invert',    label:'Invert',             desc:'Flip black and white',                                             params:[] },
+    { id:'dilate',    label:'Dilate',             desc:'Expand white regions to close gaps in lines',
+      params:[{ key:'iterations', label:'iterations', default:5, min:1, max:20 }] },
+    { id:'contours',  label:'Find contours',      desc:'Detect outlines and keep 4-sided (quadrilateral) shapes',          params:[] },
+    { id:'largestRect', label:'Largest rectangle', desc:'Pick the biggest quadrilateral as the page boundary',             params:[] },
+    { id:'warp',      label:'Perspective warp',   desc:'Straighten the original image using the detected corners',
+      params:[{ key:'widthPct', label:'width %', default:90, min:50, max:100 }] },
+    { id:'padding',   label:'Padding',            desc:'Add a white border around the result',
+      params:[{ key:'padPct', label:'padding %', default:10, min:0, max:40 }] }
+  ];
+
+  function defaultPipeline(){
+    return STEP_DEFS.map(d => ({
+      id: d.id,
+      enabled: true,
+      params: Object.fromEntries(d.params.map(p => [p.key, p.default]))
+    }));
+  }
+  let pipeline = defaultPipeline();
+
+  // ---------- state ----------
+  let cvReady = false;
+  const items = []; // { id, file, name, srcImg, outCanvas, status, error, ...elements }
+  let seq = 0;
+
+  const el = (id) => document.getElementById(id);
+  const grid = el('grid');
+  const emptyMsg = el('emptyMsg');
+  const engineDot = document.querySelector('#engineStatus .dot');
+  const engineText = el('engineStatusText');
+
+  // ---------- load opencv.js ----------
+  const cvScript = document.createElement('script');
+  cvScript.src = "https://docs.opencv.org/4.x/opencv.js";
+  cvScript.async = true;
+  cvScript.onload = () => {
+    if (typeof cv !== 'undefined' && cv.getBuildInformation) {
+      onCvReady();
+    } else {
+      cv['onRuntimeInitialized'] = onCvReady;
+    }
+  };
+  cvScript.onerror = () => {
+    engineDot.className = 'dot err';
+    engineText.textContent = 'failed to load OpenCV.js (check network / try refresh)';
+  };
+  document.head.appendChild(cvScript);
+
+  function onCvReady(){
+    cvReady = true;
+    engineDot.className = 'dot ready';
+    engineText.textContent = 'OpenCV.js ready';
+    updateGlobalButtons();
+  }
+
+  // ---------- pipeline editor UI ----------
+  function renderPipeline(){
+    const container = el('pipelineList');
+    container.innerHTML = '';
+    pipeline.forEach((step, idx) => {
+      const def = STEP_DEFS.find(d => d.id === step.id);
+      const row = document.createElement('div');
+      row.className = 'step-row' + (step.enabled ? '' : ' disabled');
+
+      const orderEl = document.createElement('div');
+      orderEl.className = 'step-order';
+      const upBtn = document.createElement('button');
+      upBtn.className = 'small'; upBtn.textContent = '↑'; upBtn.title = 'Move up';
+      upBtn.disabled = idx === 0;
+      upBtn.addEventListener('click', () => movePipelineStep(idx, idx - 1));
+      const downBtn = document.createElement('button');
+      downBtn.className = 'small'; downBtn.textContent = '↓'; downBtn.title = 'Move down';
+      downBtn.disabled = idx === pipeline.length - 1;
+      downBtn.addEventListener('click', () => movePipelineStep(idx, idx + 1));
+      orderEl.appendChild(upBtn); orderEl.appendChild(downBtn);
+
+      const toggleEl = document.createElement('label');
+      toggleEl.className = 'step-toggle';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.checked = step.enabled;
+      cb.addEventListener('change', () => { step.enabled = cb.checked; renderPipeline(); markStale(); });
+      toggleEl.appendChild(cb);
+
+      const infoEl = document.createElement('div');
+      infoEl.className = 'step-info';
+      infoEl.innerHTML = `<div class="step-name">${idx + 1}. ${def.label}</div><div class="step-desc">${def.desc}</div>`;
+
+      const paramsEl = document.createElement('div');
+      paramsEl.className = 'step-params';
+      def.params.forEach(p => {
+        const wrap = document.createElement('label');
+        wrap.className = 'param';
+        const span = document.createElement('span');
+        span.textContent = p.label;
+        const input = document.createElement('input');
+        input.type = 'number'; input.min = p.min; input.max = p.max;
+        input.value = step.params[p.key];
+        input.addEventListener('change', () => {
+          const v = clamp(parseFloat(input.value), p.min, p.max);
+          step.params[p.key] = isNaN(v) ? p.default : v;
+          input.value = step.params[p.key];
+          markStale();
+        });
+        wrap.appendChild(span); wrap.appendChild(input);
+        paramsEl.appendChild(wrap);
+      });
+
+      row.appendChild(orderEl);
+      row.appendChild(toggleEl);
+      row.appendChild(infoEl);
+      row.appendChild(paramsEl);
+      container.appendChild(row);
+    });
+  }
+
+  function movePipelineStep(from, to){
+    if (to < 0 || to >= pipeline.length) return;
+    const [s] = pipeline.splice(from, 1);
+    pipeline.splice(to, 0, s);
+    renderPipeline();
+    markStale();
+  }
+
+  function markStale(){
+    items.forEach(item => {
+      if (item.status === 'done') setStatus(item, 'stale', 'pipeline changed — reprocess to update');
+    });
+    updateGlobalButtons();
+  }
+
+  el('btnResetPipeline').addEventListener('click', () => {
+    pipeline = defaultPipeline();
+    renderPipeline();
+    markStale();
+  });
+
+  renderPipeline();
+
+  // ---------- file intake ----------
+  const drop = el('drop');
+  const fileInput = el('fileInput');
+  drop.addEventListener('click', () => fileInput.click());
+  drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('drag'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('drag'));
+  drop.addEventListener('drop', (e) => {
+    e.preventDefault(); drop.classList.remove('drag');
+    handleFiles(e.dataTransfer.files);
+  });
+  fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
+
+  function handleFiles(fileList){
+    const files = Array.from(fileList).filter(f => /image\/(jpe?g|png)/.test(f.type));
+    if (files.length === 0) return;
+    const added = files.map(addItem);
+    updateGlobalButtons();
+    if (el('optAutoProcess').checked && cvReady){
+      added.forEach(item => processItem(item));
+    }
+  }
+
+  function addItem(file){
+    const id = 'im' + (seq++);
+    const item = { id, file, name: file.name, status: 'pending', error: null };
+    items.push(item);
+    emptyMsg.classList.add('hidden');
+
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = `
+      <div class="imgbox"><img alt=""></div>
+      <div class="meta">
+        <div class="name" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</div>
+        <div class="status pending"><span class="sdot"></span><span class="statustext">pending</span></div>
+        <div class="errmsg hidden"></div>
+        <div class="rowbtns">
+          <button class="small btnProcessOne">Process</button>
+          <button class="small ghost btnDownload" disabled>Download</button>
+        </div>
+      </div>`;
+    grid.appendChild(card);
+
+    item.cardEl = card;
+    item.imgboxEl = card.querySelector('.imgbox');
+    item.statusEl = card.querySelector('.status');
+    item.statusTextEl = card.querySelector('.statustext');
+    item.errEl = card.querySelector('.errmsg');
+    item.downloadBtn = card.querySelector('.btnDownload');
+    item.processBtn = card.querySelector('.btnProcessOne');
+
+    item.downloadBtn.addEventListener('click', () => downloadOne(item));
+    item.processBtn.addEventListener('click', () => processItem(item));
+
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        item.srcImg = img;
+        item.imgboxEl.querySelector('img').src = ev.target.result;
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+
+    return item;
+  }
+
+  function escapeHtml(s){
+    return s.replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  // ---------- processing ----------
+  el('btnProcessAll').addEventListener('click', processAll);
+  el('btnClear').addEventListener('click', clearAll);
+  el('btnZip').addEventListener('click', downloadZip);
+  el('btnPdf').addEventListener('click', downloadPdf);
+
+  async function processAll(){
+    if (!cvReady) return;
+    for (const item of items){
+      if (item.status !== 'done') await processItem(item);
+    }
+    updateGlobalButtons();
+  }
+
+  function setStatus(item, status, msg){
+    item.status = status;
+    item.statusEl.className = 'status ' + status;
+    item.statusTextEl.textContent = msg || status;
+    if (status === 'error'){
+      item.errEl.classList.remove('hidden');
+      item.errEl.textContent = item.error || 'unknown error';
+    } else {
+      item.errEl.classList.add('hidden');
+    }
+    item.downloadBtn.disabled = !item.outCanvas;
+    item.processBtn.textContent = (status === 'done') ? 'Re-run' : (status === 'stale' ? 'Reprocess' : 'Process');
+    item.processBtn.disabled = (status === 'processing');
+  }
+
+  function showScanline(item, on){
+    const existing = item.imgboxEl.querySelector('.scanline');
+    if (on && !existing){
+      const line = document.createElement('div');
+      line.className = 'scanline';
+      item.imgboxEl.appendChild(line);
+    } else if (!on && existing){
+      existing.remove();
+    }
+  }
+
+  function processItem(item){
+    return new Promise((resolve) => {
+      if (!cvReady || !item.srcImg){
+        setTimeout(() => processItem(item).then(resolve), 60);
+        return;
+      }
+      setStatus(item, 'processing', 'processing…');
+      showScanline(item, true);
+      // let the UI paint before the (synchronous, blocking) CV work runs
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          try {
+            const activeSteps = pipeline.filter(s => s.enabled);
+            const { canvas, warning } = extractPage(item.srcImg, activeSteps);
+            item.outCanvas = canvas;
+            const imEl = item.imgboxEl.querySelector('img');
+            imEl.src = canvas.toDataURL('image/png');
+            showScanline(item, false);
+            setStatus(item, 'done', warning ? 'done (no rectangle found — used full frame)' : 'done');
+          } catch (err){
+            showScanline(item, false);
+            item.error = (err && err.message) ? err.message : String(err);
+            setStatus(item, 'error', 'failed');
+            console.error('Processing failed for', item.name, err);
+          }
+          updateGlobalButtons();
+          resolve();
+        }, 20);
+      });
+    });
+  }
+
+  function clamp(v, lo, hi){ return Math.max(lo, Math.min(hi, v)); }
+
+  function clearAll(){
+    items.length = 0;
+    grid.innerHTML = '';
+    grid.appendChild(emptyMsg);
+    emptyMsg.classList.remove('hidden');
+    updateGlobalButtons();
+  }
+
+  function updateGlobalButtons(){
+    const hasItems = items.length > 0;
+    const doneCount = items.filter(i => i.status === 'done' || i.status === 'stale').length;
+    el('btnProcessAll').disabled = !cvReady || !hasItems;
+    el('btnClear').disabled = !hasItems;
+    el('btnZip').disabled = doneCount === 0;
+    el('btnPdf').disabled = doneCount === 0;
+  }
+
+  // ---------- core CV pipeline (configurable, mirrors the Python TableExtractor) ----------
+  function toGray(mat){
+    const g = new cv.Mat();
+    if (mat.channels() === 4) cv.cvtColor(mat, g, cv.COLOR_RGBA2GRAY, 0);
+    else if (mat.channels() === 3) cv.cvtColor(mat, g, cv.COLOR_RGB2GRAY, 0);
+    else mat.copyTo(g);
+    return g;
+  }
+
+  function fullFrameCorners(mat){
+    return [
+      { x: 0, y: 0 },
+      { x: mat.cols, y: 0 },
+      { x: mat.cols, y: mat.rows },
+      { x: 0, y: mat.rows }
+    ];
+  }
+
+  function extractPage(imgEl, activeSteps){
+    const mats = [];
+    const track = (m) => { mats.push(m); return m; };
+    try {
+      const original = track(cv.imread(imgEl)); // untouched source, RGBA
+      let working = original;                   // current working image, reassigned as steps run
+
+      let candidateRects = [];   // [{points:[{x,y}x4], area}]
+      let selectedRect = null;   // ordered [{x,y}x4] once a rectangle is chosen
+      let warned = false;
+
+      for (const step of activeSteps){
+        switch (step.id){
+
+          case 'grayscale': {
+            if (working.channels() !== 1){
+              working = track(toGray(working));
+            }
+            break;
+          }
+
+          case 'threshold': {
+            const grayInput = (working.channels() === 1) ? working : track(toGray(working));
+            const t = track(new cv.Mat());
+            cv.threshold(grayInput, t, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU);
+            working = t;
+            break;
+          }
+
+          case 'invert': {
+            const inv = track(new cv.Mat());
+            cv.bitwise_not(working, inv);
+            working = inv;
+            break;
+          }
+
+          case 'dilate': {
+            const iterations = Math.max(1, Math.round(step.params.iterations || 5));
+            const kernel = track(cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3, 3)));
+            const d = track(new cv.Mat());
+            cv.dilate(working, d, kernel, new cv.Point(-1, -1), iterations);
+            working = d;
+            break;
+          }
+
+          case 'contours': {
+            const binInput = (working.channels() === 1) ? working : track(toGray(working));
+            const contours = new cv.MatVector();
+            const hierarchy = track(new cv.Mat());
+            cv.findContours(binInput, contours, hierarchy, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE);
+            candidateRects = [];
+            for (let i = 0; i < contours.size(); i++){
+              const c = contours.get(i);
+              const peri = cv.arcLength(c, true);
+              const approx = new cv.Mat();
+              cv.approxPolyDP(c, approx, 0.02 * peri, true);
+              if (approx.rows === 4){
+                const area = cv.contourArea(approx);
+                const d = approx.data32S;
+                candidateRects.push({
+                  area,
+                  points: [
+                    { x: d[0], y: d[1] },
+                    { x: d[2], y: d[3] },
+                    { x: d[4], y: d[5] },
+                    { x: d[6], y: d[7] }
+                  ]
+                });
+              }
+              approx.delete();
+              c.delete();
+            }
+            contours.delete();
+            break;
+          }
+
+          case 'largestRect': {
+            if (candidateRects.length){
+              const best = candidateRects.reduce((a, b) => (b.area > a.area ? b : a));
+              selectedRect = orderPoints(best.points);
+            }
+            break;
+          }
+
+          case 'warp': {
+            const widthPct = clamp(step.params.widthPct || 90, 50, 100) / 100;
+            let rect = selectedRect;
+            if (!rect){
+              warned = true;
+              rect = fullFrameCorners(original);
+            }
+            const existingWidthReduced = Math.round(original.cols * widthPct);
+            const distTopEdge = dist(rect[0], rect[1]);
+            const distLeftEdge = dist(rect[0], rect[3]);
+            const aspectRatio = distTopEdge > 0 ? (distLeftEdge / distTopEdge) : 1;
+            const newWidth = Math.max(1, existingWidthReduced);
+            const newHeight = Math.max(1, Math.round(newWidth * aspectRatio));
+
+            const srcTri = track(cv.matFromArray(4, 1, cv.CV_32FC2, [
+              rect[0].x, rect[0].y, rect[1].x, rect[1].y, rect[2].x, rect[2].y, rect[3].x, rect[3].y
+            ]));
+            const dstTri = track(cv.matFromArray(4, 1, cv.CV_32FC2, [
+              0, 0, newWidth, 0, newWidth, newHeight, 0, newHeight
+            ]));
+            const M = track(cv.getPerspectiveTransform(srcTri, dstTri));
+            const warped = track(new cv.Mat());
+            cv.warpPerspective(original, warped, M, new cv.Size(newWidth, newHeight), cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar());
+            working = warped;
+            break;
+          }
+
+          case 'padding': {
+            const padPct = clamp(step.params.padPct || 10, 0, 40) / 100;
+            const padding = Math.round(original.rows * padPct);
+            const padded = track(new cv.Mat());
+            const borderVal = (working.channels() === 1)
+              ? new cv.Scalar(255, 0, 0, 0)
+              : new cv.Scalar(255, 255, 255, 255);
+            cv.copyMakeBorder(working, padded, padding, padding, padding, padding, cv.BORDER_CONSTANT, borderVal);
+            working = padded;
+            break;
+          }
+        }
+      }
+
+      const canvas = document.createElement('canvas');
+      cv.imshow(canvas, working);
+      return { canvas, warning: warned && activeSteps.some(s => s.id === 'warp') };
+    } finally {
+      mats.forEach(m => { try { m.delete(); } catch(e){} });
+    }
+  }
+
+  function dist(p1, p2){
+    return Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
+  }
+
+  function orderPoints(pts){
+    // top-left = smallest sum, bottom-right = largest sum
+    // top-right = smallest diff, bottom-left = largest diff
+    const withSum = pts.map(p => ({ ...p, sum: p.x + p.y, diff: p.y - p.x }));
+    const tl = withSum.reduce((a, b) => (a.sum < b.sum ? a : b));
+    const br = withSum.reduce((a, b) => (a.sum > b.sum ? a : b));
+    const tr = withSum.reduce((a, b) => (a.diff < b.diff ? a : b));
+    const bl = withSum.reduce((a, b) => (a.diff > b.diff ? a : b));
+    return [tl, tr, br, bl];
+  }
+
+  // ---------- export ----------
+  function mimeAndExt(){
+    const jpeg = el('optJpeg').checked;
+    return jpeg ? { mime: 'image/jpeg', ext: 'jpg', quality: 0.92 } : { mime: 'image/png', ext: 'png', quality: undefined };
+  }
+
+  function canvasToBlob(canvas){
+    const { mime, quality } = mimeAndExt();
+    return new Promise((resolve) => canvas.toBlob(resolve, mime, quality));
+  }
+
+  function baseName(name){
+    return name.replace(/\.[^.]+$/, '');
+  }
+
+  async function downloadOne(item){
+    if (!item.outCanvas) return;
+    const { ext } = mimeAndExt();
+    const blob = await canvasToBlob(item.outCanvas);
+    triggerDownload(blob, `corrected_${baseName(item.name)}.${ext}`);
+  }
+
+  function triggerDownload(blob, filename){
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  }
+
+  async function downloadZip(){
+    const done = items.filter(i => (i.status === 'done' || i.status === 'stale') && i.outCanvas);
+    if (done.length === 0) return;
+    const btn = el('btnZip');
+    const original = btn.textContent;
+    btn.disabled = true; btn.textContent = 'zipping…';
+    try {
+      const zip = new JSZip();
+      const { ext } = mimeAndExt();
+      for (const item of done){
+        const blob = await canvasToBlob(item.outCanvas);
+        zip.file(`corrected_${baseName(item.name)}.${ext}`, blob);
+      }
+      const content = await zip.generateAsync({ type: 'blob' });
+      triggerDownload(content, 'corrected_pages.zip');
+    } finally {
+      btn.disabled = false; btn.textContent = original;
+      updateGlobalButtons();
+    }
+  }
+
+  async function downloadPdf(){
+    const done = items.filter(i => (i.status === 'done' || i.status === 'stale') && i.outCanvas);
+    if (done.length === 0) return;
+    const btn = el('btnPdf');
+    const original = btn.textContent;
+    btn.disabled = true; btn.textContent = 'building pdf…';
+    try {
+      const { jsPDF } = window.jspdf;
+      let pdf = null;
+      done.forEach((item, idx) => {
+        const c = item.outCanvas;
+        const orientation = c.width >= c.height ? 'l' : 'p';
+        const format = [c.width, c.height];
+        const dataUrl = c.toDataURL('image/jpeg', 0.92);
+        if (idx === 0){
+          pdf = new jsPDF({ orientation, unit: 'px', format });
+        } else {
+          pdf.addPage(format, orientation);
+        }
+        pdf.addImage(dataUrl, 'JPEG', 0, 0, c.width, c.height);
+      });
+      pdf.save('corrected_pages.pdf');
+    } finally {
+      btn.disabled = false; btn.textContent = original;
+      updateGlobalButtons();
+    }
+  }
+
+})();
+</script>
+</body>
+</html>
